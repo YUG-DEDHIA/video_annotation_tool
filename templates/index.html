@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Annotation Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1, h2, h3 {
+            color: #333;
+        }
+
+        form {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input[type="text"], input[type="file"], select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        input[type="submit"] {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #0056b3;
+        }
+
+        video {
+            display: block;
+            max-width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .annotation-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .annotation-list li {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fafafa;
+        }
+
+        .highlight {
+            background-color: #ffefef;
+            color: #d9534f;
+            font-weight: bold;
+        }
+
+        .annotation-list li:hover {
+            background-color: #f1f1f1;
+            cursor: pointer;
+        }
+
+        .video-section, .annotation-section {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Upload a Video for Annotation</h1>
+        <form action="/upload" method="POST" enctype="multipart/form-data">
+            <input type="file" name="video" accept="video/*">
+            <input type="submit" value="Upload Video">
+        </form>
+
+        <h2>Search Videos by Annotation</h2>
+        <form action="/search" method="GET">
+            <label for="search">Enter Label to Search:</label>
+            <input type="text" name="search" placeholder="e.g. Car, Tree, Building">
+            <input type="submit" value="Search">
+        </form>
+
+        <!-- Display search results if any -->
+        {% if search_results %}
+        <h3>Search Results:</h3>
+        <ul>
+            {% for result in search_results %}
+                <li>
+                    <h4>Video: {{ result.video }}</h4>
+                    <video width="320" controls>
+                        <source src="{{ url_for('static', filename='uploads/' + result.video) }}" type="video/mp4">
+                    </video>
+                    <p>Annotation: {{ result.label }} at {{ result.timestamp }} seconds</p>
+                </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <!-- Display the uploaded video -->
+        {% if video %}
+        <div class="video-section">
+            <h2>Uploaded Video:</h2>
+            <video id="videoPlayer" width="640" controls>
+                <source src="{{ url_for('static', filename='uploads/' + video) }}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <!-- Annotation Section -->
+        <div class="annotation-section">
+            <h3>Add Annotation</h3>
+            <form id="annotationForm" action="/annotate" method="POST">
+                <input type="hidden" name="video" value="{{ video }}">  <!-- Store video filename -->
+                <input type="hidden" name="timestamp" id="timestamp">
+                <label for="label">Select Label:</label>
+                <select name="label" id="label">
+                    <option value="Car">Car</option>
+                    <option value="Tree">Tree</option>
+                    <option value="Building">Building</option>
+                    <option value="Person">Person</option>
+                    <option value="Animal">Animal</option>
+                    <option value="Traffic Light">Traffic Light</option>
+                    <option value="Bicycle">Bicycle</option>
+                    <option value="Road">Road</option>
+                    <option value="Sky">Sky</option>
+                </select>
+                <input type="submit" value="Add Annotation">
+            </form>
+
+            <!-- List of existing annotations with a timeline -->
+            <h3>Annotations Timeline:</h3>
+            <ul class="annotation-list" id="annotationList">
+                {% for annotation in annotations %}
+                    {% if annotation.video == video %}
+                        <li data-timestamp="{{ annotation.timestamp }}">{{ annotation.timestamp }} seconds: {{ annotation.label }} (for video: {{ annotation.video }})</li>
+                    {% endif %}
+                {% else %}
+                    <li>No annotations added yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        const videoPlayer = document.getElementById('videoPlayer');
+        const annotationList = document.getElementById('annotationList').getElementsByTagName('li');
+
+        // Get the current timestamp when the video is paused to annotate
+        videoPlayer.addEventListener('pause', function() {
+            const timestampInput = document.getElementById('timestamp');
+            timestampInput.value = videoPlayer.currentTime;  // Capture the timestamp
+        });
+
+        // Highlight the annotations as the video plays
+        videoPlayer.addEventListener('timeupdate', function() {
+            const currentTime = videoPlayer.currentTime;
+
+            for (let i = 0; i < annotationList.length; i++) {
+                const timestamp = parseFloat(annotationList[i].getAttribute('data-timestamp'));
+
+                if (Math.abs(currentTime - timestamp) < 1.0) {  // Highlight when close to annotation
+                    annotationList[i].classList.add('highlight');
+                } else {
+                    annotationList[i].classList.remove('highlight');
+                }
+            }
+        });
+
+        // Allow clicking on an annotation to jump to its timestamp
+        for (let i = 0; i < annotationList.length; i++) {
+            annotationList[i].addEventListener('click', function() {
+                const timestamp = parseFloat(this.getAttribute('data-timestamp'));
+                videoPlayer.currentTime = timestamp;  // Jump to the timestamp
+                videoPlayer.play();  // Play video from this point
+            });
+        }
+    </script>
+</body>
+</html>
